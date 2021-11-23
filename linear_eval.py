@@ -8,7 +8,7 @@ Created on Tue Sep 28 01:45:20 2021
 import pytorch_lightning as pl
 import torch.nn.functional as F
 from pl_bolts.models.self_supervised import SwAV
-from model import SimCLR
+from src.model import SimCLR
 from pl_bolts.datamodules import STL10DataModule
 from pl_bolts.datamodules import CIFAR10DataModule
 from pl_bolts.models.self_supervised.swav.transforms import (
@@ -98,8 +98,6 @@ class LinearNN(torch.nn.Module):
     def __init__(self, encoder, hidden_size, out_size, frozen=True):
         super().__init__()
         self.encoder = encoder
-        self.encoder.prototypes = None
-        self.encoder.projection_head = None
         
         if frozen:
             for param in self.encoder.parameters():
@@ -164,10 +162,10 @@ class LinearNN(torch.nn.Module):
 # dm.setup('fit')
 # cifar10_normalization()
 batch_size = 256
-num_workers = 8
+num_workers = 0
 # Normalize((0.5,), (0.5,))
-cifar10_train = datasets.CIFAR10('./',transform=Compose([ToTensor(), Normalize((0.5,), (0.5,))]))
-cifar10_test = datasets.CIFAR10('./',train=False, transform=Compose([ToTensor(), Normalize((0.5,), (0.5,))]))
+cifar10_train = datasets.CIFAR10('../swav-main',transform=Compose([ToTensor(), Normalize((0.5,), (0.5,))]))
+cifar10_test = datasets.CIFAR10('../swav-main',train=False, transform=Compose([ToTensor(), Normalize((0.5,), (0.5,))]))
 
 # cifar100_train = datasets.CIFAR100('./',transform=Compose([ToTensor(), cifar10_normalization()]))
 # cifar100_test = datasets.CIFAR100('./',train=False, transform=Compose([ToTensor(), cifar10_normalization()]))
@@ -180,7 +178,7 @@ loader_val = DataLoader(cifar10_test,batch_size=batch_size,num_workers=num_worke
 
 #%% train linear
 # model2 = SwAV.load_from_checkpoint('ep1000_res18_proto300_cifar10_bs1024.ckpt')
-model2 = SimCLR.load_from_checkpoint('ep100_res50_cifar10_bs256_SimCLR.ckpt')
+model2 = SimCLR.load_from_checkpoint('ep100_SimCLR_res50_cifar10_bs256.ckpt')
 # reset model
 # model2.arch = "resnet18"
 # model2.model = model2.init_model()

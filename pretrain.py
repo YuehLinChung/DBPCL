@@ -9,7 +9,8 @@ import pytorch_lightning as pl
 import torch
 import torch.nn.functional as F
 from torchvision import transforms
-from model import SimCLR
+from src.transform import ContrastiveTransformations
+from src.model import SimCLR
 from tqdm import tqdm
 import os
 from torch.utils.data import DataLoader
@@ -90,24 +91,7 @@ def sinkhorn(self, Q, nmb_iters=3):
 
         return (Q / torch.sum(Q, dim=0, keepdim=True)).t().float()
 
-class ContrastiveTransformations:
-    def __init__(self, base_transforms, n_views=2):
-        self.base_transforms = base_transforms
-        self.n_views = n_views
 
-    def __call__(self, x):
-        return [self.base_transforms(x) for i in range(self.n_views)]
-contrast_transforms = transforms.Compose(
-    [
-        transforms.RandomHorizontalFlip(),
-        transforms.RandomResizedCrop(size=32),
-        transforms.RandomApply([transforms.ColorJitter(brightness=0.5, contrast=0.5, saturation=0.5, hue=0.1)], p=0.8),
-        transforms.RandomGrayscale(p=0.2),
-        transforms.GaussianBlur(kernel_size=9),
-        transforms.ToTensor(),
-        transforms.Normalize((0.5,), (0.5,)),
-    ]
-)
 # torch.backends.cudnn.determinstic = True
 # torch.backends.cudnn.benchmark = False
 
@@ -115,13 +99,13 @@ contrast_transforms = transforms.Compose(
 # dm.setup('fit')
 # cifar10_normalization()
 batch_size = 256
-num_workers = 6
-transform_train = ContrastiveTransformations(contrast_transforms, n_views=2)
+num_workers = 0
+transform_train = ContrastiveTransformations(n_views=2)
 
 # mnist_train = datasets.MNIST('./',transform=Compose([ToTensor(),lambda x:x.expand(3,28,28), cifar10_normalization()]))
 # mnist_test = datasets.MNIST('./',train=False, transform=Compose([ToTensor(),lambda x:x.expand(3,28,28),cifar10_normalization()]))
 
-cifar10_train = datasets.CIFAR10('./',transform=transform_train)
+cifar10_train = datasets.CIFAR10('D:\課業\研究所\研究\Practice\swav-main',transform=transform_train)
 # cifar10_test = datasets.CIFAR10('./',train=False, transform=transform_test)
 
 # cifar100_train = datasets.CIFAR100('./',transform=transform_train)
@@ -146,18 +130,24 @@ cifar10_train = datasets.CIFAR10('./',transform=transform_train)
 # indices = torch.randperm(len(cifar10_train))[:5120]
 # cifar10_train_ = Subset(cifar10_train, indices)
 # =============================================================================
-loader_train = DataLoader(cifar10_train, batch_size=batch_size, shuffle=True,num_workers=num_workers,persistent_workers=True,pin_memory=True)# pin_memory=True, prefetch_factor=5, persistent_workers=True
+loader_train = DataLoader(cifar10_train, batch_size=batch_size, shuffle=True,num_workers=num_workers, pin_memory=True)# pin_memory=True, prefetch_factor=5, persistent_workers=True
 # loader_val = DataLoader(cifar10_test,batch_size=batch_size,num_workers=num_workers, pin_memory=True)
 
 #%%
-model = SimCLR(hidden_dim=128, lr=0.01, temperature=0.1, weight_decay=1e-4, arch="resnet50")
+model = SimCLR(
+    proj_hidden_dim=2048,
+    lr=0.01,
+    temperature=0.1,
+    weight_decay=1e-4,
+    arch="resnet50"
+    )
 #%%fit
 logger = pl.loggers.TensorBoardLogger(os.getcwd(), version=None, name="lightning_logs")
 bar = LitProgressBar()
 # torch.manual_seed(0)
 # pl.seed_everything(0, workers=True)
 # limit_train_batches=0.1
-trainer = pl.Trainer(max_epochs=100, precision=16, gpus=1, callbacks=[bar],logger=logger)
+trainer = pl.Trainer(max_epochs=100, precision=32, gpus=1, callbacks=[bar],logger=logger,limit_train_batches=0.1)
 trainer.fit(model, train_dataloaders=loader_train)#, val_dataloaders=loader_val)
 bar.close_logger()
 
@@ -166,4 +156,4 @@ bar.close_logger()
 # trainer.fit(model, datamodule=dm)
 
 #%%
-trainer.save_checkpoint('ep100_res50_cifar10_bs256_SimCLR.ckpt')
+# trainer.save_checkpoint('ep200_res50_proto300_cifar10_bs256_soft_sharpen.ckpt')
