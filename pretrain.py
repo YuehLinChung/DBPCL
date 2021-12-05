@@ -11,86 +11,12 @@ import torch.nn.functional as F
 from torchvision import transforms
 from src.transform import ContrastiveTransformations
 from src.model import SimCLR
-from tqdm import tqdm
+from src.utils import LitProgressBar
 import os
 from torch.utils.data import DataLoader
 from torchvision import datasets
 import numpy as np
 import matplotlib.pyplot as plt
-from pytorch_lightning.callbacks.progress import ProgressBar, ProgressBarBase
-class LitProgressBar(ProgressBarBase):
-
-    def __init__(self):
-        super().__init__()  # don't forget this :)
-        self.enable = True
-        self.train_loss = 0
-        self.train_avg_loss = 0
-        self.val_loss = 0
-        self.epoch_idx = 0
-        self.train_logger = None
-    def disable(self):
-        self.enable = False
-    def on_train_start(self, trainer, pl_module):
-        super().on_train_start(trainer, pl_module)
-        
-    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx):
-        # self.lightning_module, outputs, batch, batch_idx, dataloader_idx
-        # super().on_train_batch_end(trainer, pl_module, outputs)  # don't forget this :)
-        super().on_train_batch_end(trainer, pl_module, outputs, batch, batch_idx, dataloader_idx)
-        self.train_loss += outputs['loss'].detach().cpu().item()
-        self.train_avg_loss = self.train_loss / (batch_idx + 1)
-        self.train_logger.set_postfix({'loss': self.train_avg_loss})
-        self.train_logger.update(1)
-    
-    def on_validation_start(self, trainer, pl_module):
-        super().on_validation_start(trainer, pl_module)
-        self.val_loss = 0
-        
-    def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx):
-        super().on_validation_batch_end(trainer, pl_module, outputs, batch, batch_idx, dataloader_idx)
-        self.val_loss += outputs.detach().item()
-        if self.train_logger:
-            self.train_logger.set_postfix({'loss':self.train_avg_loss, 'val_loss':self.val_loss/(batch_idx+1)})
-            # self.train_logger.set_postfix_str(self.train_logger.postfix + ', val_loss=%.2f'%(self.val_loss/(batch_idx+1)))
-        
-    def on_train_epoch_start(self, trainer, pl_module):
-        super().on_train_epoch_start(trainer, pl_module)
-        if self.train_logger:
-            self.train_logger.close()
-        self.train_logger = tqdm(total=trainer.num_training_batches, ascii=True, desc='epoch %2d'%self.epoch_idx, bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}')
-        self.epoch_idx += 1
-        self.train_logger.reset()
-        # self.train_logger.set_description('training epoch %2d'%self.epoch_idx)
-        self.train_loss = 0
-    def close_logger(self):
-        if self.train_logger:
-            self.train_logger.close()
-            self.train_logger = None
-        
-def sinkhorn(self, Q, nmb_iters=3):
-    with torch.no_grad():
-        sum_Q = torch.sum(Q)
-        Q /= sum_Q
-
-        K, B = Q.shape
-
-        if self.gpus > 0:
-            u = torch.zeros(K).cuda()
-            r = torch.ones(K).cuda() / K
-            c = torch.ones(B).cuda() / B
-        else:
-            u = torch.zeros(K)
-            r = torch.ones(K) / K
-            c = torch.ones(B) / B
-
-        for _ in range(nmb_iters):
-            u = torch.sum(Q, dim=1)
-
-            Q *= (r / u).unsqueeze(1)
-            Q *= (c / torch.sum(Q, dim=0)).unsqueeze(0)
-
-        return (Q / torch.sum(Q, dim=0, keepdim=True)).t().float()
-
 
 # torch.backends.cudnn.determinstic = True
 # torch.backends.cudnn.benchmark = False
@@ -105,8 +31,8 @@ transform_train = ContrastiveTransformations(n_views=2)
 # mnist_train = datasets.MNIST('./',transform=Compose([ToTensor(),lambda x:x.expand(3,28,28), cifar10_normalization()]))
 # mnist_test = datasets.MNIST('./',train=False, transform=Compose([ToTensor(),lambda x:x.expand(3,28,28),cifar10_normalization()]))
 
-cifar10_train = datasets.CIFAR10('D:\課業\研究所\研究\Practice\swav-main',transform=transform_train)
-# cifar10_test = datasets.CIFAR10('./',train=False, transform=transform_test)
+cifar10_train = datasets.CIFAR10('../SwAV',transform=transform_train)
+# cifar10_test = datasets.CIFAR10('../SwAV',train=False, transform=transform_test)
 
 # cifar100_train = datasets.CIFAR100('./',transform=transform_train)
 # cifar100_train = datasets.CIFAR100('./',transform=Compose([ToTensor(), cifar10_normalization()]))
@@ -115,21 +41,13 @@ cifar10_train = datasets.CIFAR10('D:\課業\研究所\研究\Practice\swav-main'
 # datasets.INaturalist
 # semi_iNat_unlabeled = ImageFolder('C:/Dataset/semi-inat-2021/u_train/', transform=transform_train, target_transform=lambda x:-1)
 
-# voc07_train = datasets.VOCDetection('./', year='2007', image_set='train',transform=Compose([Resize(size=(500,500)), ToTensor(), cifar10_normalization()]))
-# voc07_test = datasets.VOCDetection('./', year='2007', image_set='val',transform=Compose([Resize(size=(500,500)),ToTensor(), cifar10_normalization()]))
-
 # svhn_train = datasets.SVHN('./', split='train',transform=Compose([ToTensor(), cifar10_normalization()]))
 # svhn_test = datasets.SVHN('./', split='test',transform=Compose([ToTensor(), cifar10_normalization()]))
 
 # stl10_unlabeled = datasets.STL10('C:\Dataset', split='unlabeled', transform=transform_train)
 # stl10_train = datasets.STL10('C:\Dataset', split='train', transform=SwAVTrainDataTransform(size_crops=[32, 16], nmb_crops=[2,4],normalize=cifar10_normalization()))
 # stl10_test = datasets.STL10('C:\Dataset', split='test', transform=SwAVEvalDataTransform(size_crops=[32, 16], nmb_crops=[2,4],normalize=cifar10_normalization()))
-# =============================================================================
-# from torch.utils.data import Subset
-# import torch
-# indices = torch.randperm(len(cifar10_train))[:5120]
-# cifar10_train_ = Subset(cifar10_train, indices)
-# =============================================================================
+
 loader_train = DataLoader(cifar10_train, batch_size=batch_size, shuffle=True,num_workers=num_workers, pin_memory=True)# pin_memory=True, prefetch_factor=5, persistent_workers=True
 # loader_val = DataLoader(cifar10_test,batch_size=batch_size,num_workers=num_workers, pin_memory=True)
 
@@ -139,15 +57,18 @@ model = SimCLR(
     lr=0.01,
     temperature=0.1,
     weight_decay=1e-4,
-    arch="resnet50"
+    arch="resnet50",
+    fusion=True
     )
+# model = SimCLR.load_from_checkpoint('ep100_SimCLRFusion_res50_cifar10_bs256.ckpt')
+# model = model.to(torch.float16)
 #%%fit
 logger = pl.loggers.TensorBoardLogger(os.getcwd(), version=None, name="lightning_logs")
 bar = LitProgressBar()
 # torch.manual_seed(0)
 # pl.seed_everything(0, workers=True)
 # limit_train_batches=0.1
-trainer = pl.Trainer(max_epochs=100, precision=32, gpus=1, callbacks=[bar],logger=logger,limit_train_batches=0.1)
+trainer = pl.Trainer(max_epochs=100, precision=32, gpus=1, callbacks=[bar],logger=logger,limit_train_batches=1.0)
 trainer.fit(model, train_dataloaders=loader_train)#, val_dataloaders=loader_val)
 bar.close_logger()
 
