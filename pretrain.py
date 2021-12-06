@@ -78,3 +78,4 @@ bar.close_logger()
 
 #%%
 # trainer.save_checkpoint('ep200_res50_proto300_cifar10_bs256_soft_sharpen.ckpt')
+# torch.save(model, 'ep200_res50_proto300_cifar10_bs256_soft_sharpen.pth')

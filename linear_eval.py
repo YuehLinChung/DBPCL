@@ -20,6 +20,7 @@ import torch
 # import os
 import numpy as np
 import matplotlib.pyplot as plt
+from sklearn.metrics import top_k_accuracy_score as topk
 
 class LinearNN(torch.nn.Module):
     def __init__(self, encoder, hidden_size, out_size, frozen=True):
@@ -49,6 +50,7 @@ num_workers = 0
 # Normalize((0.5,), (0.5,))
 # cifar10_normalization()
 normalization = cifar10_normalization()
+# normalization = Normalize((0.5,), (0.5,))
 
 # mnist_train = datasets.MNIST('../SwAV',transform=Compose([ToTensor(),lambda x:x.expand(3,28,28), normalization]))
 # mnist_test = datasets.MNIST('../SwAV',train=False, transform=Compose([ToTensor(),lambda x:x.expand(3,28,28),normalization]))
@@ -60,15 +62,15 @@ normalization = cifar10_normalization()
 # cifar10_train = datasets.CIFAR10('../SwAV',transform=Compose([ToTensor(), normalization]))
 # cifar10_test = datasets.CIFAR10('../SwAV',train=False, transform=Compose([ToTensor(), normalization]))
 
-# cifar100_train = datasets.CIFAR100('../SwAV',transform=Compose([ToTensor(), Normalize((0.5,), (0.5,))]))
-# cifar100_test = datasets.CIFAR100('../SwAV',train=False, transform=Compose([ToTensor(), Normalize((0.5,), (0.5,))]))
+# cifar100_train = datasets.CIFAR100('../SwAV',transform=Compose([ToTensor(), normalization]))
+# cifar100_test = datasets.CIFAR100('../SwAV',train=False, transform=Compose([ToTensor(), normalization]))
 
-# stl10_train = datasets.STL10('C:/Dataset', split='train', transform=Compose([ToTensor(),Normalize((0.5,), (0.5,))]))
-# stl10_test = datasets.STL10('C:/Dataset', split='test', transform=Compose([ToTensor(),Normalize((0.5,), (0.5,))]))
+# stl10_train = datasets.STL10('C:/Dataset', split='train', transform=Compose([ToTensor(),normalization]))
+# stl10_test = datasets.STL10('C:/Dataset', split='test', transform=Compose([ToTensor(),normalization]))
 # stl10_unlabel = DataLoader(datasets.STL10('C:/Dataset', split='unlabeled', transform=Compose([SwAVTrainDataTransform(size_crops=[64, 32], nmb_crops=[2,4])])),batch_size=batch_size, shuffle=True)
 
-# voc07_train = datasets.VOCDetection('./', year='2007', image_set='train',transform=Compose([Resize(size=(500,500)), ToTensor(), cifar10_normalization()]))
-# voc07_test = datasets.VOCDetection('./', year='2007', image_set='val',transform=Compose([Resize(size=(500,500)),ToTensor(), cifar10_normalization()]))
+# voc07_train = datasets.VOCDetection('./', year='2007', image_set='train',transform=Compose([Resize(size=(500,500)), ToTensor(), normalization]))
+# voc07_test = datasets.VOCDetection('./', year='2007', image_set='val',transform=Compose([Resize(size=(500,500)),ToTensor(), normalization]))
 
 svhn_train = datasets.SVHN('../SwAV', split='train',transform=Compose([ToTensor(), normalization]))
 svhn_test = datasets.SVHN('../SwAV', split='test',transform=Compose([ToTensor(), normalization]))
@@ -76,15 +78,22 @@ svhn_test = datasets.SVHN('../SwAV', split='test',transform=Compose([ToTensor(),
 loader_train = DataLoader(svhn_train, batch_size=batch_size, shuffle=True,num_workers=num_workers)#,persistent_workers=True)
 loader_val = DataLoader(svhn_test,batch_size=batch_size,num_workers=num_workers)#,persistent_workers=True)
 
+#%% load model
+# encoder = SwAV.load_from_checkpoint('../SwAV/ep500_res50_proto3000_cifar10_bs256.ckpt')
+encoder = SimCLR.load_from_checkpoint('ep500_SimCLRFusion_res50_cifar10_bs256.ckpt')
+# encoder = SimCLR.load_from_checkpoint('ep100_SimCLRFusion_res18_cifar10_bs1024.ckpt')
+out_dim = encoder(torch.empty(1,3,64,64, device=encoder.device)).shape[-1]
+if hasattr(loader_train.dataset, 'classes'):
+    classes = len(loader_train.dataset.classes)
+elif hasattr(loader_train.dataset, 'labels'):
+    classes = len(set(loader_train.dataset.labels))
+else:
+    raise AttributeError("number of classes unknown")
+# classes = 10
+model = LinearNN(encoder, out_dim, classes, frozen=True)
+# model = LinearNN(encoder, 2048, 10, frozen=True)
+model.eval()
 #%% train linear
-model2 = SwAV.load_from_checkpoint('../SwAV/ep100_res50_proto300_cifar10_bs256.ckpt')
-# model2 = SimCLR.load_from_checkpoint('ep1000_SimCLRFusion_res50_cifar10_bs256.ckpt')
-# model2 = SimCLR.load_from_checkpoint('ep100_SimCLRFusion_res18_cifar10_bs1024.ckpt')
-# reset model
-# model2.arch = "resnet18"
-# model2.model = model2.init_model()
-model = LinearNN(model2, 2048, 62, frozen=True)
-
 # train from scratch
 # model = torch.hub.load('pytorch/vision:v0.8.2', 'resnet18', pretrained=False)
 # model.fc = torch.nn.Linear(512, 20)
@@ -142,43 +151,45 @@ for epoch in range(epochs):
             batch_idx += 1
     print()
 #%%validate data (KNN&SVM)
-# =============================================================================
-# from sklearn.neighbors import KNeighborsClassifier as KNN
-# from sklearn.svm import SVC
-# from sklearn.metrics import classification_report
-# # knn = KNN(n_neighbors=20)
+from sklearn.neighbors import KNeighborsClassifier as KNN
+from sklearn.svm import SVC
+from sklearn.metrics import classification_report
+knn = KNN(n_neighbors=20)
 # svc = SVC(kernel='linear')
-# feats_train = []
-# labels_train = []
-# feats_val = []
-# labels_val = []
-# torch.manual_seed(0)
-# model2 = SwAV.load_from_checkpoint('../SwAV/ep100_res50_proto300_cifar10_bs256.ckpt')
-# # model2 = SimCLR.load_from_checkpoint('ep100_SimCLR_res50_cifar10_bs256.ckpt')
-# device = torch.device('cuda:0')
-# model2 = model2.to(device)
-# model2.freeze()
-# for batch, label in loader_train:
-#     batch = batch.to(device)
-#     labels_train.append(label.cpu().numpy())
-#     
-#     feat = model2(batch).cpu().numpy()
-#     # feat = model2(batch)[0].cpu().numpy()
-#     feats_train.append(feat)
-# 
-# for batch, label in loader_val:
-#     batch = batch.to(device)
-#     labels_val.append(label.cpu().numpy())
-#     
-#     feat = model2(batch).cpu().numpy()
-#     # feat = model2(batch)[0].cpu().numpy()
-#     feats_val.append(feat)
-# x_train = np.vstack(feats_train)
-# y_train = np.hstack(labels_train)
-# x_val = np.vstack(feats_val)
-# y_val = np.hstack(labels_val)
-# 
-# svc.fit(x_train, y_train)
-# pred = svc.predict(x_val)
-# print(classification_report(y_val, pred))
-# =============================================================================
+feats_train = []
+labels_train = []
+feats_val = []
+labels_val = []
+torch.manual_seed(0)
+model2 = SwAV.load_from_checkpoint('../SwAV/ep500_res50_proto3000_cifar10_bs256.ckpt')
+# model2 = SimCLR.load_from_checkpoint('ep500_SimCLRFusion_res50_cifar10_bs256.ckpt')
+device = torch.device('cuda:0')
+model2 = model2.to(device)
+model2.freeze()
+for batch, label in loader_train:
+    batch = batch.to(device)
+    labels_train.append(label.cpu().numpy())
+    
+    feat = model2(batch).cpu().numpy()
+    # feat = model2(batch)[0].cpu().numpy()
+    feats_train.append(feat)
+
+for batch, label in loader_val:
+    batch = batch.to(device)
+    labels_val.append(label.cpu().numpy())
+    
+    feat = model2(batch).cpu().numpy()
+    # feat = model2(batch)[0].cpu().numpy()
+    feats_val.append(feat)
+x_train = np.vstack(feats_train)
+y_train = np.hstack(labels_train)
+x_val = np.vstack(feats_val)
+y_val = np.hstack(labels_val)
+
+knn.fit(x_train, y_train)
+# pred = knn.predict(x_val)
+pred_prob = knn.predict_proba(x_val)
+pred = pred_prob.argmax(-1)
+print(classification_report(y_val, pred, digits=5))
+print('Top-1: %6.3f'%(topk(y_val, pred_prob, k=1)*100))
+print('Top-5: %6.3f'%(topk(y_val, pred_prob, k=5)*100))
