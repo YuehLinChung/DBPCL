@@ -30,8 +30,9 @@ batch_size = 256
 num_workers = 0
 # Normalize((0.5,), (0.5,))
 # cifar10_normalization()
-normalization = cifar10_normalization()
-
+# normalization = cifar10_normalization()
+normalization = Normalize((0.5,), (0.5,))
+# normalization = Normalize((0,), (1,))
 # mnist_train = datasets.MNIST('../SwAV',transform=Compose([ToTensor(),lambda x:x.expand(3,28,28), normalization]))
 # mnist_test = datasets.MNIST('../SwAV',train=False, transform=Compose([ToTensor(),lambda x:x.expand(3,28,28),normalization]))
 
@@ -39,14 +40,14 @@ normalization = cifar10_normalization()
 # emnist_train = datasets.EMNIST('../SwAV',split='byclass',transform=Compose([ToTensor(),lambda x:x.expand(3,28,28), normalization]), download=True)
 # emnist_test = datasets.EMNIST('../SwAV',split='byclass',train=False,transform=Compose([ToTensor(),lambda x:x.expand(3,28,28), normalization]), download=True)
 
-cifar10_train = datasets.CIFAR10('../SwAV',transform=Compose([ToTensor(), normalization]))
-cifar10_test = datasets.CIFAR10('../SwAV',train=False, transform=Compose([ToTensor(), normalization]))
+# cifar10_train = datasets.CIFAR10('../SwAV',transform=Compose([ToTensor(), normalization]))
+# cifar10_test = datasets.CIFAR10('../SwAV',train=False, transform=Compose([ToTensor(), normalization]))
 
 # cifar100_train = datasets.CIFAR100('../SwAV',transform=Compose([ToTensor(), normalization]))
 # cifar100_test = datasets.CIFAR100('../SwAV',train=False, transform=Compose([ToTensor(), normalization]))
 
-# stl10_train = datasets.STL10('C:/Dataset', split='train', transform=Compose([ToTensor(),normalization]))
-# stl10_test = datasets.STL10('C:/Dataset', split='test', transform=Compose([ToTensor(),normalization]))
+stl10_train = datasets.STL10('C:/Dataset', split='train', transform=Compose([ToTensor(),normalization]))
+stl10_test = datasets.STL10('C:/Dataset', split='test', transform=Compose([ToTensor(),normalization]))
 # stl10_unlabel = DataLoader(datasets.STL10('C:/Dataset', split='unlabeled', transform=Compose([SwAVTrainDataTransform(size_crops=[64, 32], nmb_crops=[2,4])])),batch_size=batch_size, shuffle=True)
 
 # voc07_train = datasets.VOCDetection('./', year='2007', image_set='train',transform=Compose([Resize(size=(500,500)), ToTensor(), cifar10_normalization()]))
@@ -55,13 +56,13 @@ cifar10_test = datasets.CIFAR10('../SwAV',train=False, transform=Compose([ToTens
 # svhn_train = datasets.SVHN('../SwAV', split='train',transform=Compose([ToTensor(), normalization]))
 # svhn_test = datasets.SVHN('../SwAV', split='test',transform=Compose([ToTensor(), normalization]))
 
-loader_train = DataLoader(cifar10_train, batch_size=batch_size, shuffle=True,num_workers=num_workers)#,persistent_workers=True)
-loader_val = DataLoader(cifar10_test,batch_size=batch_size,num_workers=num_workers)#,persistent_workers=True)
+loader_train = DataLoader(stl10_train, batch_size=batch_size, shuffle=True,num_workers=num_workers)#,persistent_workers=True)
+loader_val = DataLoader(stl10_test,batch_size=batch_size,num_workers=num_workers)#,persistent_workers=True)
 
 #%% train linear
-model = SwAV.load_from_checkpoint('../SwAV/ep100_res50_proto300_cifar10_bs256.ckpt')
-# model = SimCLR.load_from_checkpoint('ep1000_SimCLRFusion_res50_cifar10_bs256.ckpt')
-# model = SimCLR.load_from_checkpoint('ep100_SimCLRFusion_res18_cifar10_bs1024.ckpt')
+# model = SwAV.load_from_checkpoint('../SwAV/ep1000_res50_proto3000_stl10_bs256_multicrop.ckpt')
+# model = SimCLR.load_from_checkpoint('ep1000_SimCLRFusion_res50_stl10_bs256.ckpt')
+model = SimCLR.load_from_checkpoint('./models/ep100_SimCLR_res50_stl10_bs256_adj.ckpt')
 
 device = torch.device('cuda:0')
 model = model.to(device)
@@ -73,14 +74,12 @@ labels_train = []
 feats_val = []
 labels_val = []
 torch.manual_seed(0)
-# model2 = SimCLR.load_from_checkpoint('ep100_SimCLR_res50_cifar10_bs256.ckpt')
 
 for batch, label in loader_train:
     batch = batch.to(device)
     labels_train.append(label.cpu().numpy())
     
     feat = model(batch).cpu().numpy()
-    # feat = model2(batch)[0].cpu().numpy()
     feats_train.append(feat)
 
 for batch, label in loader_val:
@@ -88,7 +87,6 @@ for batch, label in loader_val:
     labels_val.append(label.cpu().numpy())
     
     feat = model(batch).cpu().numpy()
-    # feat = model2(batch)[0].cpu().numpy()
     feats_val.append(feat)
 x_train = np.vstack(feats_train)
 y_train = np.hstack(labels_train)
@@ -106,5 +104,5 @@ sns.scatterplot(
     palette=sns.color_palette("hls", 10),
     data=df,
     legend="full",
-    alpha=0.5
+    alpha=0.8
 )

@@ -2,6 +2,7 @@ import torch
 import numpy as np
 from tqdm import tqdm
 from pytorch_lightning.callbacks.progress import ProgressBarBase
+import pytorch_lightning as pl
 
 class LitProgressBar(ProgressBarBase):
 
@@ -24,26 +25,26 @@ class LitProgressBar(ProgressBarBase):
         super().on_train_batch_end(trainer, pl_module, outputs, batch, batch_idx)
         self.train_loss += outputs['loss'].detach().cpu().item()
         self.train_avg_loss = self.train_loss / (batch_idx + 1)
-        self.train_logger.set_postfix({'loss': self.train_avg_loss})
+        self.train_logger.set_postfix({'loss': '%.4f'%self.train_avg_loss})
         self.train_logger.update(1)
     
     def on_validation_start(self, trainer, pl_module):
         super().on_validation_start(trainer, pl_module)
         self.val_loss = 0
         
-    def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
-        super().on_validation_batch_end(trainer, pl_module, outputs, batch, batch_idx)
+    def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx):
+        super().on_validation_batch_end(trainer, pl_module, outputs, batch, batch_idx, dataloader_idx)
         self.val_loss += outputs.detach().item()
         if self.train_logger:
-            self.train_logger.set_postfix({'loss':self.train_avg_loss, 'val_loss':self.val_loss/(batch_idx+1)})
+            self.train_logger.set_postfix({'loss':'%.4f'%self.train_avg_loss, 'val_loss':self.val_loss/(batch_idx+1)})
             # self.train_logger.set_postfix_str(self.train_logger.postfix + ', val_loss=%.2f'%(self.val_loss/(batch_idx+1)))
         
     def on_train_epoch_start(self, trainer, pl_module):
         super().on_train_epoch_start(trainer, pl_module)
         if self.train_logger:
             self.train_logger.close()
-        self.train_logger = tqdm(total=trainer.num_training_batches, ascii=True, desc='epoch %2d'%self.epoch_idx, bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}')
-        self.epoch_idx += 1
+        self.train_logger = tqdm(total=trainer.num_training_batches, ascii=True, desc='epoch %2d'%(self.trainer.current_epoch+1), bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}')
+        # self.epoch_idx += 1
         self.train_logger.reset()
         # self.train_logger.set_description('training epoch %2d'%self.epoch_idx)
         self.train_loss = 0
@@ -51,6 +52,17 @@ class LitProgressBar(ProgressBarBase):
         if self.train_logger:
             self.train_logger.close()
             self.train_logger = None
+
+class CheckpointOnEpochs(pl.Callback):
+    def __init__(self, epochs: list, path_fmt,):
+        self.epochs = epochs
+        self.path_fmt = path_fmt
+
+    def on_epoch_end(self, trainer: pl.Trainer, _):
+        epoch = trainer.current_epoch + 1
+        if epoch in self.epochs:
+            ckpt_path = self.path_fmt.format(epoch=epoch)
+            trainer.save_checkpoint(ckpt_path)
 
 def sinkhorn(self, Q, nmb_iters=3):
     with torch.no_grad():

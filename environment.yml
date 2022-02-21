@@ -1,0 +1,14 @@
+channels:
+  - pytorch
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.8.12
+  - pytorch::torchvision
+  - cudatoolkit=10.2
+  - pytorch::torchaudio
+  - pytorch::pytorch
+  - conda-forge::pytorch-lightning=1.5.3
+  - tensorboard=2.6.0
+  - scikit-learn=1.0.1
+  - setuptools=59.5.0
