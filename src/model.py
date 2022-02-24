@@ -218,8 +218,10 @@ class DBCLR(SimCLR):
             arch: str = "resnet50",
             fusion: bool = False,
             fusion_on: str = 'proj',
-            concentration = 0.1):
+            concentration: float = 0.1,
+            warmup_epoch: int = 20):
         self.concentration = concentration
+        self.warmup_epoch = warmup_epoch
         super().__init__(
         proj_hidden_dim=proj_hidden_dim,
         proj_out_dim=proj_out_dim,
@@ -262,35 +264,36 @@ class DBCLR(SimCLR):
         entropy = -prob[:, 0].log().mean()
         loss += entropy
         self.log("hp/infoNCE", entropy)
-        
-        db = DBSCAN(eps=0.3, min_samples=1, metric='cosine', n_jobs=-1)
-        assignments = db.fit_predict(proj_normed.detach().cpu().numpy())
-        clusters = assignments.max()+1
-        # (imgs[0]*0.5+0.5).permute(1,2,0).cpu().numpy()
-        # print(assignments.max()+1)
-        inter_cluster_loss = 0
-        inter_clusters = 0
-        centroids = []
-        for group_index in np.unique(assignments):
-            group = proj_normed[assignments==group_index]
-            centroids.append(F.normalize(group.mean(dim=0, keepdim=True)))
-            if group.shape[0] == 1:
-                continue
-            # inter_cluster_loss -= F.softmax(torch.mm(group, group.t()) / self.concentration, dim=1).diag().log().mean()
-            inter_cluster_loss -= F.softmax(torch.mm(group, torch.vstack(centroids).t()) / self.concentration, dim=1)[:,-1].log().mean()
-            inter_clusters += 1
-        
-        inter_cluster_loss /= inter_clusters
-        self.log("hp/inter_cluster_loss", inter_cluster_loss, on_step=True)
-        loss += inter_cluster_loss
-        
-        centroids = torch.vstack(centroids)
-        cross_cluster_loss = -F.softmax(torch.mm(centroids, centroids.t()) / self.concentration, dim=1).diag().log().mean()
-        cross_cluster_loss /= clusters
-        self.log("hp/cross_cluster_loss", cross_cluster_loss, on_step=True)
-        loss += cross_cluster_loss
-        
-        self.log("hp/clusters", float(clusters), on_step=True)
+        #TODO: after self.warmup_epoch
+        if self.current_epoch >= self.warmup_epoch:
+            db = DBSCAN(eps=0.3, min_samples=1, metric='cosine', n_jobs=-1)
+            assignments = db.fit_predict(proj_normed.detach().cpu().numpy())
+            clusters = assignments.max()+1
+            # (imgs[0]*0.5+0.5).permute(1,2,0).cpu().numpy()
+            # print(assignments.max()+1)
+            inter_cluster_loss = 0
+            inter_clusters = 0
+            centroids = []
+            for group_index in np.unique(assignments):
+                group = proj_normed[assignments==group_index]
+                centroids.append(F.normalize(group.mean(dim=0, keepdim=True)))
+                if group.shape[0] == 1:
+                    continue
+                # inter_cluster_loss -= F.softmax(torch.mm(group, group.t()) / self.concentration, dim=1).diag().log().mean()
+                inter_cluster_loss -= F.softmax(torch.mm(group, torch.vstack(centroids).t()) / self.concentration, dim=1)[:,-1].log().mean()
+                inter_clusters += 1
+            
+            inter_cluster_loss /= inter_clusters
+            self.log("hp/inter_cluster_loss", inter_cluster_loss, on_step=True)
+            loss += inter_cluster_loss
+            
+            centroids = torch.vstack(centroids)
+            cross_cluster_loss = -F.softmax(torch.mm(centroids, centroids.t()) / self.concentration, dim=1).diag().log().mean()
+            cross_cluster_loss /= clusters
+            self.log("hp/cross_cluster_loss", cross_cluster_loss, on_step=True)
+            loss += cross_cluster_loss
+            
+            self.log("hp/clusters", float(clusters), on_step=True)
         return loss
 
 class MutiClustering(pl.LightningModule):
@@ -357,7 +360,6 @@ class MutiClustering(pl.LightningModule):
         
         proj_a = self.projection_head(embedded_a)
         proj_b = self.projection_head(embedded_b)
-        ###TODO: here
         
         feats = self.convnet(imgs)
         proj = self.projection_head(feats)
