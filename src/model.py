@@ -219,9 +219,11 @@ class DBCLR(SimCLR):
             fusion: bool = False,
             fusion_on: str = 'proj',
             concentration: float = 0.1,
-            warmup_epoch: int = 20):
+            warmup_epoch: int = 20,
+            eps:float = 0.3):
         self.concentration = concentration
         self.warmup_epoch = warmup_epoch
+        self.eps = eps
         super().__init__(
         proj_hidden_dim=proj_hidden_dim,
         proj_out_dim=proj_out_dim,
@@ -264,9 +266,8 @@ class DBCLR(SimCLR):
         entropy = -prob[:, 0].log().mean()
         loss += entropy
         self.log("hp/infoNCE", entropy)
-        #TODO: after self.warmup_epoch
         if self.current_epoch >= self.warmup_epoch:
-            db = DBSCAN(eps=0.3, min_samples=1, metric='cosine', n_jobs=-1)
+            db = DBSCAN(eps=self.eps, min_samples=1, metric='cosine', n_jobs=-1)
             assignments = db.fit_predict(proj_normed.detach().cpu().numpy())
             clusters = assignments.max()+1
             # (imgs[0]*0.5+0.5).permute(1,2,0).cpu().numpy()

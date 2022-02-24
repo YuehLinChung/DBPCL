@@ -60,7 +60,8 @@ model = DBCLR(
     fusion=False,
     fusion_on = 'proj_norm',
     concentration=0.1,
-    warmup_epoch=20
+    warmup_epoch=20,
+    eps=0.5
     )
 # model = SimCLR.load_from_checkpoint('ep1000_SimCLRFusion_res50_stl10_bs256_feats.ckpt')
 # model = model.to(torch.float16)
