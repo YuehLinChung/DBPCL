@@ -17,12 +17,12 @@ from torchvision import datasets
 # torch.backends.cudnn.determinstic = True
 # torch.backends.cudnn.benchmark = False
 torch.backends.cudnn.benchmark = True
-os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 #%% load data
 # dm.setup('fit')
 # cifar10_normalization()
 batch_size = 256
-num_workers = 8
+num_workers = 4
 transform_train = ContrastiveTransformations(n_views=2, crop_size=96)
 
 # mnist_train = datasets.MNIST('./',transform=Compose([ToTensor(),lambda x:x.expand(3,28,28), cifar10_normalization()]))
@@ -41,7 +41,7 @@ transform_train = ContrastiveTransformations(n_views=2, crop_size=96)
 # svhn_train = datasets.SVHN('./', split='train',transform=Compose([ToTensor(), cifar10_normalization()]))
 # svhn_test = datasets.SVHN('./', split='test',transform=Compose([ToTensor(), cifar10_normalization()]))
 
-stl10_unlabeled = datasets.STL10('../SwAV', split='unlabeled', transform=transform_train)
+stl10_unlabeled = datasets.STL10('./', split='unlabeled', transform=transform_train, download=True)
 # stl10_train = datasets.STL10('C:\Dataset', split='train', transform=transform_train)
 # stl10_test = datasets.STL10('C:\Dataset', split='test', transform=transform_train)
 
