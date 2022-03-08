@@ -267,33 +267,45 @@ class DBCLR(SimCLR):
         loss += entropy
         self.log("hp/infoNCE", entropy)
         if self.current_epoch >= self.warmup_epoch:
-            db = DBSCAN(eps=self.eps, min_samples=1, metric='cosine', n_jobs=-1)
-            assignments = db.fit_predict(proj_normed.detach().cpu().numpy())
-            clusters = assignments.max()+1
-            # (imgs[0]*0.5+0.5).permute(1,2,0).cpu().numpy()
-            # print(assignments.max()+1)
             inter_cluster_loss = 0
-            inter_clusters = 0
-            centroids = []
-            for group_index in np.unique(assignments):
-                group = proj_normed[assignments==group_index]
-                centroids.append(F.normalize(group.mean(dim=0, keepdim=True)))
-                if group.shape[0] == 1:
-                    continue
-                # inter_cluster_loss -= F.softmax(torch.mm(group, group.t()) / self.concentration, dim=1).diag().log().mean()
-                inter_cluster_loss -= F.softmax(torch.mm(group, torch.vstack(centroids).t()) / self.concentration, dim=1)[:,-1].log().mean()
-                inter_clusters += 1
+            cross_cluster_loss = 0
+            for eps in [0.1,0.3,0.5]:
+                db = DBSCAN(eps=eps, min_samples=1, metric='cosine', n_jobs=None)
+                assignments = db.fit_predict(proj_normed.detach().cpu().numpy())
+                clusters = assignments.max()+1
+                # concentrations = (np.bincount(assignments)/(np.bincount(assignments)).mean())*self.temperature
+                _inter_cluster_loss = 0
+                _inter_clusters = 0
+                centroids = []
+                for group_index in np.unique(assignments):
+                    group = proj_normed[assignments==group_index]
+                    centroids.append(F.normalize(group.mean(dim=0, keepdim=True)))
+                for group_index in np.unique(assignments):
+                    group = proj_normed[assignments==group_index]
+                    _inter_cluster_loss -= F.softmax(torch.mm(group, torch.vstack(centroids).t()) / self.concentration, dim=1)[:,group_index].log().mean()
+                    _inter_clusters += 1
+                    # if group.shape[0] == 1:
+                    #     continue
+                    # # inter_cluster_loss -= F.softmax(torch.mm(group, group.t()) / self.concentration, dim=1).diag().log().mean()
+                    # _inter_cluster_loss -= F.softmax(torch.mm(group, torch.vstack(centroids).t()) / self.concentration, dim=1)[:,-1].log().mean()
+                    # _inter_clusters += 1
+                
+                if _inter_clusters != 0:
+                    _inter_cluster_loss /= _inter_clusters
+                _inter_cluster_loss /= 3
+                inter_cluster_loss += _inter_cluster_loss
+                
+                centroids = torch.vstack(centroids)
+                _cross_cluster_loss = -F.softmax(torch.mm(centroids, centroids.t()) / self.concentration, dim=1).diag().log().mean()
+                _cross_cluster_loss /= clusters
             
-            inter_cluster_loss /= inter_clusters
-            self.log("hp/inter_cluster_loss", inter_cluster_loss, on_step=True)
+                _cross_cluster_loss /= 3
+                cross_cluster_loss += _cross_cluster_loss
+                
             loss += inter_cluster_loss
-            
-            centroids = torch.vstack(centroids)
-            cross_cluster_loss = -F.softmax(torch.mm(centroids, centroids.t()) / self.concentration, dim=1).diag().log().mean()
-            cross_cluster_loss /= clusters
-            self.log("hp/cross_cluster_loss", cross_cluster_loss, on_step=True)
             loss += cross_cluster_loss
-            
+            self.log("hp/inter_cluster_loss", inter_cluster_loss, on_step=True)
+            self.log("hp/cross_cluster_loss", cross_cluster_loss, on_step=True)
             self.log("hp/clusters", float(clusters), on_step=True)
         return loss
 
@@ -461,3 +473,18 @@ class Supervised(pl.LightningModule):
     def training_epoch_end(self, outputs):
         epoch_loss = (sum([out['loss'] for out in outputs])/len(outputs)).item()
         self.log("train_loss", epoch_loss, on_step=False, on_epoch=True)
+
+#%%
+# =============================================================================
+# import matplotlib.pyplot as plt
+# plt.figure()
+# plt.hist(assignments, bins=range(256))
+# fig = plt.figure()
+# idx = 11
+# for i in range((assignments==idx).sum()):
+#     ax = fig.add_subplot(3,4,i+1)
+#     ax.imshow((imgs.cpu()[assignments==idx]*0.5+0.5)[i].permute(1,2,0))
+#     ax.set_title(np.arange(256)[assignments==idx][i])
+#     ax.axis('off')
+# =============================================================================
+
