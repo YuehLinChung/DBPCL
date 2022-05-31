@@ -43,7 +43,7 @@ class LitProgressBar(ProgressBarBase):
         super().on_train_epoch_start(trainer, pl_module)
         if self.train_logger:
             self.train_logger.close()
-        self.train_logger = tqdm(total=trainer.num_training_batches, ascii=True, desc='epoch %2d'%(self.trainer.current_epoch+1), bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}')
+        self.train_logger = tqdm(total=trainer.num_training_batches, ascii=True, desc='epoch %3d'%(self.trainer.current_epoch+1), bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}')
         # self.epoch_idx += 1
         self.train_logger.reset()
         # self.train_logger.set_description('training epoch %2d'%self.epoch_idx)
@@ -58,7 +58,7 @@ class CheckpointOnEpochs(pl.Callback):
         self.epochs = epochs
         self.path_fmt = path_fmt
 
-    def on_epoch_end(self, trainer: pl.Trainer, _):
+    def on_train_epoch_end(self, trainer: pl.Trainer, _):
         epoch = trainer.current_epoch + 1
         if epoch in self.epochs:
             ckpt_path = self.path_fmt.format(epoch=epoch)
