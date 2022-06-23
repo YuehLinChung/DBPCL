@@ -115,6 +115,8 @@ class ResNet(nn.Module):
         out = torch.flatten(out, 1)
         return out
 
+def resnet8():
+    return ResNet(BasicBlock, [1, 1, 1])
 
 def resnet20():
     return ResNet(BasicBlock, [3, 3, 3])

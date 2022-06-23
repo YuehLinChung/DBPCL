@@ -13,9 +13,11 @@ from torch.utils.data import DataLoader
 from torchvision import datasets
 from torchvision.transforms import ToTensor, Compose, Normalize
 
+# from pl_bolts.transforms.dataset_normalizations import cifar10_normalization
 # import sys
 import torch
 # import os
+import random
 import numpy as np
 import argparse
 from sklearn.neighbors import KNeighborsClassifier as KNN
@@ -26,18 +28,26 @@ from sklearn.metrics import top_k_accuracy_score as topk
 # from numba import cuda
 from sklearn.model_selection import StratifiedShuffleSplit
 
+torch.backends.cudnn.determinstic = True
+
 def main(args):
+    random.seed(0)
     torch.manual_seed(0)
+    np.random.seed(0)
+    torch.cuda.manual_seed_all(0)
+    
     batch_size = args.bs
     num_workers = args.workers
-
+    torch.backends.cudnn.determinstic = True
+    torch.backends.cudnn.benchmark = False
+    
     if args.model == "swav":
         normalization = Normalize((0.5,), (0.5,))#cifar10_normalization()
     elif args.model == "simclr":
         normalization = Normalize((0.5,), (0.5,))
     else:
         normalization = Normalize((0.5,), (0.5,))
-    
+        
     if args.dataset == "mnist":
         dataset_train = datasets.MNIST(args.data_folder,transform=Compose([ToTensor(),lambda x:x.expand(3,28,28), normalization]))
         dataset_test = datasets.MNIST(args.data_folder,train=False, transform=Compose([ToTensor(),lambda x:x.expand(3,28,28),normalization]))
@@ -51,8 +61,10 @@ def main(args):
         dataset_test = datasets.CIFAR10(args.data_folder,train=False, transform=Compose([ToTensor(), normalization]))
         classes = 10
     elif args.dataset == "cifar20":
-        dataset_train = datasets.CIFAR100(args.data_folder,transform=Compose([ToTensor(), normalization]),target_transform=sparse2coarse)
-        dataset_test = datasets.CIFAR100(args.data_folder,train=False, transform=Compose([ToTensor(), normalization]),target_transform=sparse2coarse)
+        dataset_train = datasets.CIFAR100(args.data_folder,transform=Compose([ToTensor(), normalization]))
+        dataset_test = datasets.CIFAR100(args.data_folder,train=False, transform=Compose([ToTensor(), normalization]))
+        dataset_train.targets = sparse2coarse(dataset_train.targets).tolist()
+        dataset_test.targets = sparse2coarse(dataset_test.targets).tolist()
         classes = 20
     elif args.dataset == "cifar100":
         dataset_train = datasets.CIFAR100(args.data_folder,transform=Compose([ToTensor(), normalization]))
@@ -73,15 +85,17 @@ def main(args):
         dataset_test = datasets.SVHN(args.data_folder, split='test',transform=Compose([ToTensor(), normalization]))
     else:
         raise RuntimeError('unsupport dataset')
-        
-    if args.fraction != 1:
+    if args.fraction != 1 or isinstance(args.fraction, int):
         if hasattr(dataset_train, 'targets'):
             targets = dataset_train.targets
         elif hasattr(dataset_train, 'labels'):
             targets = dataset_train.labels
         else:
             raise AttributeError("targets unknown")
-        sss = StratifiedShuffleSplit(n_splits=1, train_size=args.fraction, random_state=0)
+        fraction = args.fraction
+        if isinstance(args.fraction, int):
+            fraction *= classes
+        sss = StratifiedShuffleSplit(n_splits=1, train_size=fraction, random_state=0)
         indices = next(sss.split(np.zeros(len(targets)), targets))[0]
         srs = torch.utils.data.SubsetRandomSampler(indices)
         loader_train = DataLoader(dataset_train, batch_size=batch_size, shuffle=False,num_workers=num_workers, sampler=srs)
@@ -104,7 +118,7 @@ def main(args):
         device = torch.device('cpu')
     encoder = encoder.to(device)
     encoder.eval()
-    
+
     #%% train linear
     if args.method == 'ann':
         out_dim = encoder(torch.empty(1,3,64,64, device=encoder.device)).shape[-1]
@@ -119,7 +133,8 @@ def main(args):
         # lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=lr/50)
         loss_fn = torch.nn.CrossEntropyLoss()
         model = model.to(device)
-        # loader_train.dataset.transform = WeekTransformation(n_views=1, crop_size=32)
+#         loader_train.dataset.transform = WeekTransformation(n_views=1, crop_size=32)
+        
         for epoch in range(epochs):
             loss_avg = 0
             _loss_sum = 0
@@ -131,7 +146,7 @@ def main(args):
             # train
             model.train()
             for batch, label in loader_train:
-                # batch = batch[0]
+#                 batch = batch[0]
                 batch = batch.to(device)
                 label = label.to(device)
                 size += batch.shape[0]
@@ -188,7 +203,6 @@ def main(args):
         # print('Top-5: %6.3f'%(top5))
 
     elif args.method in ['knn', 'svm', 'lr']:
-        encoder.eval()
         for param in encoder.parameters():
             param.requires_grad = False
         
