@@ -1,4 +1,4 @@
-# SSL
+# Density-Based Prototypical Contrastive Learning on Visual Representations
 A Self-Supervised Learning method on Representation Learning.
 
 ## Create environment
