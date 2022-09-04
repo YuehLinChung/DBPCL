@@ -1,0 +1,16 @@
+arch: resnet32
+con_estimation: true
+concentration: 0.1
+eps:
+- 0.3
+- 0.5
+first_conv: false
+lr: 0.01
+max_epochs: 200
+maxpool1: false
+proj_hidden_dim: 256
+proj_out_dim: 128
+temperature: 0.1
+use_mlp: true
+warmup_epoch: 0
+weight_decay: 0.0001

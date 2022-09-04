@@ -31,6 +31,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.nn.init as init
+import collections
 
 from torch.autograd import Variable
 
@@ -49,7 +50,6 @@ class LambdaLayer(nn.Module):
 
     def forward(self, x):
         return self.lambd(x)
-
 
 class BasicBlock(nn.Module):
     expansion = 1
@@ -81,7 +81,6 @@ class BasicBlock(nn.Module):
         out += self.shortcut(x)
         out = F.relu(out)
         return out
-
 
 class ResNet(nn.Module):
     def __init__(self, block, num_blocks, num_classes=10):
@@ -121,26 +120,20 @@ def resnet8():
 def resnet20():
     return ResNet(BasicBlock, [3, 3, 3])
 
-
 def resnet32():
     return ResNet(BasicBlock, [5, 5, 5])
-
 
 def resnet44():
     return ResNet(BasicBlock, [7, 7, 7])
 
-
 def resnet56():
     return ResNet(BasicBlock, [9, 9, 9])
-
 
 def resnet110():
     return ResNet(BasicBlock, [18, 18, 18])
 
-
 def resnet1202():
     return ResNet(BasicBlock, [200, 200, 200])
-
 
 def test(net):
     import numpy as np
@@ -151,6 +144,47 @@ def test(net):
     print("Total number of params", total_params)
     print("Total layers", len(list(filter(lambda p: p.requires_grad and len(p.data.size())>1, net.parameters()))))
 
+class Conv4(torch.nn.Module):
+    def __init__(self):
+        super(Conv4, self).__init__()
+        self.inplanes = 64
+
+        self.layer1 = nn.Sequential(collections.OrderedDict([
+          ('conv',    nn.Conv2d(3, 8, kernel_size=3, stride=1, padding=1, bias=False)),
+          ('bn',      nn.BatchNorm2d(8)),
+          ('relu',    nn.ReLU()),
+          ('avgpool', nn.AvgPool2d(kernel_size=2, stride=2))
+        ]))
+
+        self.layer2 = nn.Sequential(collections.OrderedDict([
+          ('conv',    nn.Conv2d(8, 16, kernel_size=3, stride=1, padding=1, bias=False)),
+          ('bn',      nn.BatchNorm2d(16)),
+          ('relu',    nn.ReLU()),
+          ('avgpool', nn.AvgPool2d(kernel_size=2, stride=2))
+        ]))
+
+        self.layer3 = nn.Sequential(collections.OrderedDict([
+          ('conv',    nn.Conv2d(16, 32, kernel_size=3, stride=1, padding=1, bias=False)),
+          ('bn',      nn.BatchNorm2d(32)),
+          ('relu',    nn.ReLU()),
+          ('avgpool', nn.AvgPool2d(kernel_size=2, stride=2))
+        ]))
+
+        self.layer4 = nn.Sequential(collections.OrderedDict([
+          ('conv',    nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1, bias=False)),
+          ('bn',      nn.BatchNorm2d(64)),
+          ('relu',    nn.ReLU()),
+          #('avgpool', nn.AvgPool2d(kernel_size=4))
+          ('glbpool', nn.AdaptiveAvgPool2d(1))
+        ]))
+
+    def forward(self, x):
+        h = self.layer1(x)
+        h = self.layer2(h)
+        h = self.layer3(h)
+        h = self.layer4(h)
+        h = torch.flatten(h, 1)
+        return h
 
 if __name__ == "__main__":
     for net_name in __all__:
